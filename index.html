@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Bus Tracker</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+body {font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#e0f2fe,#fef9c3);margin:0;}
+header{background:#1e3a8a;color:#fff;padding:15px;text-align:center;font-weight:bold;font-size:20px;}
+.container{max-width:720px;margin:20px auto;padding:15px;}
+h2{text-align:center;color:#1e3a8a;margin-bottom:15px;}
+.panel{background:#fff;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 6px 15px rgba(0,0,0,0.08);}
+button{padding:8px 14px;margin:6px 4px;cursor:pointer;border:none;border-radius:6px;font-weight:600;}
+.btn-green{background:#16a34a;color:#fff}.btn-green:hover{background:#15803d;}
+.btn-red{background:#dc2626;color:#fff}.btn-red:hover{background:#b91c1c;}
+.btn-blue{background:#2563eb;color:#fff}.btn-blue:hover{background:#1d4ed8;}
+input{padding:10px;width:100%;margin:6px 0;border:1px solid #ccc;border-radius:6px;font-size:14px;}
+.progress-bar{background:#e5e7eb;border-radius:6px;overflow:hidden;height:18px;margin-top:5px;}
+.progress{height:100%;background:#34d399;transition:width 0.3s;}
+#crowdLevel{font-weight:bold;}
+.offline{color:#9a3412;font-weight:bold;}
+footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
+#busMap{width:100%; height:400px; border-radius:12px; margin-top:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+</style>
+</head>
+<body>
+
+<header>🚍 Smart Bus Tracker</header>
+
+<!-- Login Page -->
+<div class="container" id="loginPage">
+  <h2>Welcome</h2>
+  <div class="panel">
+    <h3>Pilot Login</h3>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button class="btn-green" onclick="loginPilot()">Login as Pilot</button>
+  </div>
+  <div class="panel">
+    <h3>Passenger Access</h3>
+    <button class="btn-blue" onclick="enterPassenger()">Enter as Passenger</button>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div class="container" id="dashboard" style="display:none;">
+  <h2 id="roleTitle"></h2>
+
+  <!-- Bus Info -->
+  <div class="panel">
+    <h3>Bus Info</h3>
+    <p>Current Stop: <span id="currentStop">Stop 1</span></p>
+    <p>Next Stop: <span id="nextStop">Stop 2</span></p>
+    <p>Next Bus Arrival: <span id="nextBus">--:--</span></p>
+    <p class="offline">Estimated Location: <span id="estimatedLoc">--</span></p>
+    <div id="pilotControlsBus">
+      <input type="text" id="setCurrentStop" placeholder="Set Current Stop">
+      <input type="text" id="setNextStop" placeholder="Set Next Stop">
+      <input type="text" id="setNextBus" placeholder="Set Next Bus Time (HH:MM)">
+      <input type="number" id="setSpeed" placeholder="Set Bus Speed (km/h)">
+      <input type="number" id="setDistance" placeholder="Distance to Next Stop (km)">
+      <button class="btn-green" onclick="updateBusInfo()">Update Bus Info</button>
+    </div>
+  </div>
+
+  <!-- Seats -->
+  <div class="panel">
+    <h3>Seats / Crowd Level</h3>
+    <p>Total Seats: <span id="totalSeats">30</span></p>
+    <p>Occupied: <span id="occupiedSeats">8</span></p>
+    <p>Available: <span id="availableSeats">22</span></p>
+    <div class="progress-bar"><div class="progress" id="seatProgress" style="width:26.6%"></div></div>
+    <p>Crowd Level: <span id="crowdLevel">Low</span></p>
+    <div id="pilotControlsSeats">
+      <button id="plusSeat" class="btn-green">+</button>
+      <button id="minusSeat" class="btn-red">-</button>
+    </div>
+  </div>
+
+  <!-- Wheelchair -->
+  <div class="panel">
+    <h3>Wheelchair Accessibility</h3>
+    <p>Wheelchair Space: <span id="wheelchairStatus">Available</span></p>
+    <div id="wheelchairControls">
+      <button id="reserveWC" class="btn-green">Reserve Wheelchair</button>
+      <button id="releaseWC" class="btn-red">Release Wheelchair</button>
+    </div>
+  </div>
+
+  <!-- Network Mode -->
+  <div class="panel">
+    <h3>Network Mode</h3>
+    <p>Status: <span id="networkStatus" style="font-weight:bold;color:green;">Online</span></p>
+    <button class="btn-blue" onclick="toggleNetwork()">Toggle Online/Offline</button>
+  </div>
+
+  <!-- Live Map -->
+  <div class="panel">
+    <h3>Live Bus Location (Coimbatore)</h3>
+    <div id="busMap"></div>
+  </div>
+
+  <button class="btn-red" onclick="logout()">Logout</button>
+</div>
+
+<footer>© 2025 Smart Bus Tracker | SIH Demo</footer>
+
+<script>
+let occupiedSeats=8,TOTAL_SEATS=30;
+let wheelchairAvailable=true;
+let role="";
+let busSpeed=20,routeDistance=5,lastUpdateTime=new Date();
+let currentStopName="Stop 1",nextStopName="Stop 2";
+let isOnline=true;
+
+// Elements
+const currentStopEl=document.getElementById('currentStop');
+const nextStopEl=document.getElementById('nextStop');
+const nextBusEl=document.getElementById('nextBus');
+const occupiedEl=document.getElementById('occupiedSeats');
+const availableEl=document.getElementById('availableSeats');
+const seatProgEl=document.getElementById('seatProgress');
+const crowdLevelEl=document.getElementById('crowdLevel');
+const wheelchairStatusEl=document.getElementById('wheelchairStatus');
+const estimatedLocEl=document.getElementById('estimatedLoc');
+const networkStatusEl=document.getElementById('networkStatus');
+
+// ------------------ Map Setup ------------------
+let map = L.map('busMap').setView([11.0168,76.9558], 13); // Center of Coimbatore
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let busIcon = L.icon({iconUrl:'https://img.icons8.com/plasticine/100/000000/bus.png',iconSize:[38,38]});
+let busMarker = L.marker([11.0168,76.9558],{icon:busIcon}).addTo(map);
+
+// ------------------ Login / Logout ------------------
+function loginPilot(){
+    const username=document.getElementById('username').value.trim();
+    const password=document.getElementById('password').value.trim();
+    if(username==="pilot" && password==="1234"){
+        role="pilot";
+        document.getElementById('loginPage').style.display="none";
+        document.getElementById('dashboard').style.display="block";
+        document.getElementById('roleTitle').textContent="Pilot Dashboard";
+        document.getElementById('pilotControlsBus').style.display="block";
+        document.getElementById('pilotControlsSeats').style.display="block";
+        document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=false);
+    }else alert("Invalid credentials! pilot/1234");
+}
+
+function enterPassenger(){
+    role="passenger";
+    document.getElementById('loginPage').style.display="none";
+    document.getElementById('dashboard').style.display="block";
+    document.getElementById('roleTitle').textContent="Passenger View";
+    document.getElementById('pilotControlsSeats').style.display="none";
+    document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=true);
+    document.querySelector('#pilotControlsBus button').style.display="none";
+}
+
+function logout(){
+    role="";
+    document.getElementById('dashboard').style.display="none";
+    document.getElementById('loginPage').style.display="block";
+}
+
+// ------------------ Seats & Wheelchair ------------------
+function updateSeats(){
+    occupiedEl.textContent=occupiedSeats;
+    availableEl.textContent=TOTAL_SEATS-occupiedSeats;
+    let pct=(occupiedSeats/TOTAL_SEATS)*100;
+    seatProgEl.style.width=pct+'%';
+    if(pct<=50){crowdLevelEl.textContent='Low';crowdLevelEl.style.color='green';}
+    else if(pct<=80){crowdLevelEl.textContent='Medium';crowdLevelEl.style.color='orange';}
+    else{crowdLevelEl.textContent='High';crowdLevelEl.style.color='red';}
+}
+
+function updateWheelchair(){
+    wheelchairStatusEl.textContent=wheelchairAvailable?'Available':'Not Available';
+}
+
+// Controls
+document.getElementById('plusSeat').addEventListener('click',()=>{if(role==="pilot" && occupiedSeats<TOTAL_SEATS){occupiedSeats++;updateSeats();}});
+document.getElementById('minusSeat').addEventListener('click',()=>{if(role==="pilot" && occupiedSeats>0){occupiedSeats--;updateSeats();}});
+document.getElementById('reserveWC').addEventListener('click',()=>{wheelchairAvailable=false;updateWheelchair();});
+document.getElementById('releaseWC').addEventListener('click',()=>{wheelchairAvailable=true;updateWheelchair();});
+
+// ------------------ Bus Info ------------------
+function updateBusInfo(){
+    if(role!=="pilot") return;
+    let c=document.getElementById('setCurrentStop').value;
+    let n=document.getElementById('setNextStop').value;
+    let t=document.getElementById('setNextBus').value;
+    let s=parseFloat(document.getElementById('setSpeed').value);
+    let d=parseFloat(document.getElementById('setDistance').value);
+    if(c){currentStopName=c; currentStopEl.textContent=c;}
+    if(n){nextStopName=n; nextStopEl.textContent=n;}
+    if(t) nextBusEl.textContent=t;
+    if(!isNaN(s)) busSpeed=s;
+    if(!isNaN(d)) routeDistance=d;
+    lastUpdateTime=new Date();
+}
+
+// ------------------ Network ------------------
+function toggleNetwork(){
+    isOnline=!isOnline;
+    networkStatusEl.textContent=isOnline?"Online":"Offline";
+    networkStatusEl.style.color=isOnline?"green":"red";
+}
+
+// ------------------ Estimate Location ------------------
+function estimateLocation(){
+    if(isOnline){estimatedLocEl.textContent="Live GPS Data Available"; estimatedLocEl.style.color="green";}
+    else{
+        if(lastUpdateTime && busSpeed>0 && routeDistance>0){
+            let now=new Date();
+            let hours=(now-lastUpdateTime)/3600000;
+            let travelled=busSpeed*hours;
+            estimatedLocEl.style.color="#9a3412";
+            if(travelled>=routeDistance) estimatedLocEl.textContent=`Reached ${nextStopName}`;
+            else{
+                let pct=(travelled/routeDistance*100).toFixed(1);
+                estimatedLocEl.textContent=`${pct}% between ${currentStopName} and ${nextStopName}`;
+            }
+        } else estimatedLocEl.textContent="--";
+    }
+}
+
+// ------------------ Bus Movement Simulation ------------------
+let busLat=11.0168, busLon=76.9558;
+let dir=0.0003;
+setInterval(()=>{
+    if(isOnline){
+        busLat+=dir;
+        busLon+=dir;
+        if(busLat>11.035 || busLat<11.0) dir=-dir; // bounce
+        busMarker.setLatLng([busLat,busLon]);
+        map.panTo([busLat,busLon],{animate:true});
+    }
+},1000);
+
+// ------------------ Init ------------------
+updateSeats();
+updateWheelchair();
+setInterval(estimateLocation,5000);
+</script>
+</body>
+</html>
