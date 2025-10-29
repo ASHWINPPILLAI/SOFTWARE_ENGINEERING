@@ -15,18 +15,41 @@ body {font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#e0f2f
 header{background:#1e3a8a;color:#fff;padding:15px;text-align:center;font-weight:bold;font-size:20px;}
 .container{max-width:720px;margin:20px auto;padding:15px;}
 h2{text-align:center;color:#1e3a8a;margin-bottom:15px;}
+h3{color:#1e3a8a;}
 .panel{background:#fff;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 6px 15px rgba(0,0,0,0.08);}
 button{padding:8px 14px;margin:6px 4px;cursor:pointer;border:none;border-radius:6px;font-weight:600;}
 .btn-green{background:#16a34a;color:#fff}.btn-green:hover{background:#15803d;}
 .btn-red{background:#dc2626;color:#fff}.btn-red:hover{background:#b91c1c;}
 .btn-blue{background:#2563eb;color:#fff}.btn-blue:hover{background:#1d4ed8;}
-input{padding:10px;width:100%;margin:6px 0;border:1px solid #ccc;border-radius:6px;font-size:14px;}
+input, select{padding:10px;width:100%;margin:6px 0;border:1px solid #ccc;border-radius:6px;font-size:14px; box-sizing: border-box;}
 .progress-bar{background:#e5e7eb;border-radius:6px;overflow:hidden;height:18px;margin-top:5px;}
 .progress{height:100%;background:#34d399;transition:width 0.3s;}
 #crowdLevel{font-weight:bold;}
 .offline{color:#9a3412;font-weight:bold;}
 footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
 #busMap{width:100%; height:400px; border-radius:12px; margin-top:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+
+/* --- STYLES for DEMO & TRACKING --- */
+#adminAlerts { background: #e9ecef; padding: 10px; border-radius: 5px; margin-top: 10px; min-height: 150px; overflow-y: auto; max-height: 250px;}
+.alert-card { padding: 8px; border-radius: 5px; margin-bottom: 8px; color: white; transition: all 0.3s ease; }
+.alert-sos { background-color: #dc3545; border-left: 5px solid #a71d2a; animation: pulse-red 1s infinite; }
+.alert-info { background-color: #17a2b8; border-left: 5px solid #117a8b; } /* Style for police notification */
+.alert-deviation { background-color: #ffc107; color: black; border-left: 5px solid #c69500; }
+.alert-safe { background-color: #28a745; border-left: 5px solid #1e7e34; }
+
+#trackingControls button { margin: 5px 0; width: 100%; }
+#sosButton { background-color: #dc3545; color: white; }
+#sosButton:hover { background-color: #c82333; }
+#forceDeviationButton { background-color: #ffc107; color: black;}
+#returnRouteButton { background-color: #28a745; color: white; }
+#sosConfirmation { color: #dc3545; font-weight: bold; text-align: center; margin-top: 5px; display: none; } /* For pilot confirmation */
+
+
+@keyframes pulse-red {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+  70% { transform: scale(1.02); box-shadow: 0 0 10px 10px rgba(220, 53, 69, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
 </style>
 </head>
 <body>
@@ -35,78 +58,100 @@ footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
 
 <!-- Login Page -->
 <div class="container" id="loginPage">
-  <h2>Welcome</h2>
-  <div class="panel">
-    <h3>Pilot Login</h3>
-    <input type="text" id="username" placeholder="Username">
-    <input type="password" id="password" placeholder="Password">
-    <button class="btn-green" onclick="loginPilot()">Login as Pilot</button>
-  </div>
-  <div class="panel">
-    <h3>Passenger Access</h3>
-    <button class="btn-blue" onclick="enterPassenger()">Enter as Passenger</button>
-  </div>
+  <h2>Welcome</h2>
+  <div class="panel">
+    <h3>Pilot Login</h3>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <!-- ADDED LOGIN ERROR MESSAGE -->
+    <p id="loginError" style="color:red; display:none; text-align: center; margin: 5px 0;"></p>
+    <button class="btn-green" onclick="loginPilot()">Login as Pilot</button>
+  </div>
+  <div class="panel">
+    <h3>Passenger Access</h3>
+    <button class="btn-blue" onclick="enterPassenger()">Enter as Passenger</button>
+  </div>
 </div>
 
 <!-- Dashboard -->
 <div class="container" id="dashboard" style="display:none;">
-  <h2 id="roleTitle"></h2>
+  <h2 id="roleTitle"></h2>
 
-  <!-- Bus Info -->
-  <div class="panel">
-    <h3>Bus Info</h3>
-    <p>Current Stop: <span id="currentStop">Stop 1</span></p>
-    <p>Next Stop: <span id="nextStop">Stop 2</span></p>
-    <p>Next Bus Arrival: <span id="nextBus">--:--</span></p>
-    <p class="offline">Estimated Location: <span id="estimatedLoc">--</span></p>
-    <div id="pilotControlsBus">
-      <input type="text" id="setCurrentStop" placeholder="Set Current Stop">
-      <input type="text" id="setNextStop" placeholder="Set Next Stop">
-      <input type="text" id="setNextBus" placeholder="Set Next Bus Time (HH:MM)">
-      <input type="number" id="setSpeed" placeholder="Set Bus Speed (km/h)">
-      <input type="number" id="setDistance" placeholder="Distance to Next Stop (km)">
-      <button class="btn-green" onclick="updateBusInfo()">Update Bus Info</button>
-    </div>
-  </div>
+  <!-- Bus Info -->
+  <div class="panel">
+    <h3>Bus Info</h3>
+    <p>Current Stop: <span id="currentStop">Stop 1</span></p>
+    <p>Next Stop: <span id="nextStop">Stop 2</span></p>
+    <p>Next Bus Arrival: <span id="nextBus">--:--</span></p>
+    <p class="offline">Estimated Location: <span id="estimatedLoc">--</span></p>
+    <div id="pilotControlsBus">
+      <input type="text" id="setCurrentStop" placeholder="Set Current Stop">
+      <input type="text" id="setNextStop" placeholder="Set Next Stop">
+      <input type="text" id="setNextBus" placeholder="Set Next Bus Time (HH:MM)">
+      <input type="number" id="setSpeed" placeholder="Set Bus Speed (km/h)">
+      <input type="number" id="setDistance" placeholder="Distance to Next Stop (km)">
+      <button class="btn-green" onclick="updateBusInfo()">Update Bus Info</button>
+    </div>
+  </div>
 
-  <!-- Seats -->
-  <div class="panel">
-    <h3>Seats / Crowd Level</h3>
-    <p>Total Seats: <span id="totalSeats">30</span></p>
-    <p>Occupied: <span id="occupiedSeats">8</span></p>
-    <p>Available: <span id="availableSeats">22</span></p>
-    <div class="progress-bar"><div class="progress" id="seatProgress" style="width:26.6%"></div></div>
-    <p>Crowd Level: <span id="crowdLevel">Low</span></p>
-    <div id="pilotControlsSeats">
-      <button id="plusSeat" class="btn-green">+</button>
-      <button id="minusSeat" class="btn-red">-</button>
-    </div>
-  </div>
+  <!-- Seats -->
+  <div class="panel">
+    <h3>Seats / Crowd Level</h3>
+    <p>Total Seats: <span id="totalSeats">30</span></p>
+    <p>Occupied: <span id="occupiedSeats">8</span></p>
+    <p>Available: <span id="availableSeats">22</span></p>
+    <div class="progress-bar"><div class="progress" id="seatProgress" style="width:26.6%"></div></div>
+    <p>Crowd Level: <span id="crowdLevel">Low</span></p>
+    <div id="pilotControlsSeats">
+      <button id="plusSeat" class="btn-green">+</button>
+      <button id="minusSeat" class="btn-red">-</button>
+    </div>
+  </div>
 
-  <!-- Wheelchair -->
-  <div class="panel">
-    <h3>Wheelchair Accessibility</h3>
-    <p>Wheelchair Space: <span id="wheelchairStatus">Available</span></p>
-    <div id="wheelchairControls">
-      <button id="reserveWC" class="btn-green">Reserve Wheelchair</button>
-      <button id="releaseWC" class="btn-red">Release Wheelchair</button>
-    </div>
-  </div>
+  <!-- Wheelchair -->
+  <div class="panel">
+    <h3>Wheelchair Accessibility</h3>
+    <p>Wheelchair Space: <span id="wheelchairStatus">Available</span></p>
+    <div id="wheelchairControls">
+      <button id="reserveWC" class="btn-green">Reserve Wheelchair</button>
+      <button id="releaseWC" class="btn-red">Release Wheelchair</button>
+    </div>
+  </div>
 
-  <!-- Network Mode -->
-  <div class="panel">
-    <h3>Network Mode</h3>
-    <p>Status: <span id="networkStatus" style="font-weight:bold;color:green;">Online</span></p>
-    <button class="btn-blue" onclick="toggleNetwork()">Toggle Online/Offline</button>
-  </div>
+  <!-- Network Mode -->
+  <div class="panel">
+    <h3>Network Mode</h3>
+    <p>Status: <span id="networkStatus" style="font-weight:bold;color:green;">Online</span></p>
+    <button class="btn-blue" onclick="toggleNetwork()">Toggle Online/Offline</button>
+  </div>
 
-  <!-- Live Map -->
-  <div class="panel">
-    <h3>Live Bus Location (Coimbatore)</h3>
-    <div id="busMap"></div>
-  </div>
+  <!-- Live Map -->
+  <div class="panel">
+    <h3>Live Tracking</h3>
+    <label for="busSelector">Select a Bus to Track:</label>
+    <select id="busSelector">
+      <option value="">-- Select Bus --</option>
+    </select>
+    <div id="busMap"></div>
+  </div>
+  
+  <!-- Tracking Controls (Pilot Only) -->
+  <div class="panel" id="trackingControls" style="display:none;">
+    <h3>Tracking Demo Controls</h3>
+    <button id="sosButton">🚨 TRIGGER SOS</button>
+    <!-- ADDED SOS CONFIRMATION MESSAGE -->
+    <p id="sosConfirmation"></p>
+    <button id="forceDeviationButton">⚠️ Force Route Deviation</button>
+    <button id="returnRouteButton">✅ Return to Route</button>
+  </div>
 
-  <button class="btn-red" onclick="logout()">Logout</button>
+  <!-- Admin Alerts (Pilot Only) -->
+  <div class="panel" id="adminPanel" style="display:none;">
+    <h3>Admin Alerts</h3>
+    <div id="adminAlerts"><p><i>Alerts will appear here...</i></p></div>
+  </div>
+
+  <button class="btn-red" onclick="logout()">Logout</button>
 </div>
 
 <footer>© 2025 Smart Bus Tracker | SIH Demo</footer>
@@ -130,60 +175,252 @@ const crowdLevelEl=document.getElementById('crowdLevel');
 const wheelchairStatusEl=document.getElementById('wheelchairStatus');
 const estimatedLocEl=document.getElementById('estimatedLoc');
 const networkStatusEl=document.getElementById('networkStatus');
+const adminAlertsDiv = document.getElementById("adminAlerts");
+const busSelector = document.getElementById("busSelector");
+const sosConfirmationEl = document.getElementById("sosConfirmation"); // Get SOS confirmation element
 
 // ------------------ Map Setup ------------------
-let map = L.map('busMap').setView([11.0168,76.9558], 13); // Center of Coimbatore
+let map = L.map('busMap').setView([11.0168,76.9558], 11); // Center of Coimbatore
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution:'&copy; OpenStreetMap contributors'
+  attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-let busIcon = L.icon({iconUrl:'https://img.icons8.com/plasticine/100/000000/bus.png',iconSize:[38,38]});
-let busMarker = L.marker([11.0168,76.9558],{icon:busIcon}).addTo(map);
+// --- ADVANCED MAP & TRACKING ---
+
+// Bus Icons
+const selectedIcon = L.divIcon({ html:'<div style="font-size:36px;">🚌</div>', className:'', iconSize:[60,60], iconAnchor:[30,30] });
+const sosIcon = L.divIcon({ html:'<div style="font-size:36px; animation: pulse-red 1s infinite;">🚨</div>', className:'', iconSize:[60,60], iconAnchor:[30,30] });
+const deviatedIcon = L.divIcon({ html:'<div style="font-size:36px;">⚠️</div>', className:'', iconSize:[60,60], iconAnchor:[30,30] });
+
+// Sample Buses with full data
+let buses = [
+  { id:1, name:"Bus A1 (Gandhipuram)", routeStops:[ {name:"Gandhipuram", lat:11.0183, lng:76.9686},{name:"Ukkadam",lat:10.9915,lng:76.9669}], seats:15, womenOnly:false, accessible:true, reservedSeats:2, lat:11.0183,lng:76.9686, eta:10, isDeviated: false, sosActive: false, geofence: [[10.98, 76.95], [11.03, 76.95], [11.03, 76.98], [10.98, 76.98]] },
+  { id:2, name:"Bus C1 (RS Puram)", routeStops:[ {name:"RS Puram",lat:11.0056,lng:76.9568},{name:"Gandhipuram",lat:11.0183,lng:76.9686}], seats:12, womenOnly:true, accessible:true, reservedSeats:4, lat:11.0056,lng:76.9568, eta:8, isDeviated: false, sosActive: false, geofence: [[10.99, 76.94], [11.03, 76.94], [11.03, 76.98], [10.99, 76.98]] },
+  { id:3, name:"Bus D1 (Saibaba Kovil)", routeStops:[ {name:"Saibaba Kovil",lat:11.0260,lng:76.9515},{name:"Town Hall",lat:10.9971,lng:76.9689}], seats:20, womenOnly:true, accessible:false, reservedSeats:0, lat:11.0260,lng:76.9515, eta:12, isDeviated: false, sosActive: false, geofence: [[10.98, 76.94], [11.04, 76.94], [11.04, 76.98], [10.98, 76.98]] }
+];
+
+// State variables
+let currentBus = null;
+let currentMarker = null;
+let currentGeofenceLayer = null;
+let currentPolylineLayer = null;
+
+// Add buses to dropdown
+buses.forEach(bus => {
+  const option = document.createElement('option');
+  option.value = bus.id;
+  option.textContent = bus.name;
+  busSelector.appendChild(option);
+});
+busSelector.onchange = () => {
+  const selectedId = parseInt(busSelector.value);
+  const bus = buses.find(b => b.id === selectedId);
+  if (bus) {
+    showSelectedBus(bus);
+  } else {
+    clearMap();
+  }
+};
+
+// --- Tracking Helper Functions ---
+
+function addAdminAlert(bus, type, message = '') { // Added optional message parameter
+    if (adminAlertsDiv.querySelector("p")) adminAlertsDiv.innerHTML = "";
+    const alert = document.createElement('div');
+    const time = new Date().toLocaleTimeString();
+    if (type === 'SOS') {
+        alert.className = 'alert-card alert-sos';
+        alert.innerHTML = `<strong>SOS!</strong> ${bus.name} triggered panic button at ${time}.`;
+    } else if (type === 'DEVIATION') {
+        alert.className = 'alert-card alert-deviation';
+        alert.innerHTML = `<strong>DEVIATION!</strong> ${bus.name} went off-route at ${time}.`;
+    } else if (type === 'SAFE') {
+        alert.className = 'alert-card alert-safe';
+        alert.innerHTML = `<strong>SAFE:</strong> ${bus.name} is back on route at ${time}.`;
+    } else if (type === 'INFO') { // New type for police notification
+        alert.className = 'alert-card alert-info';
+        alert.innerHTML = `<strong>INFO:</strong> ${message} (${bus.name} at ${time}).`;
+    }
+    adminAlertsDiv.prepend(alert);
+}
+
+function isPointInPolygon(point, polygon) {
+    let [lat, lng] = point;
+    let isInside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        let [pi_lat, pi_lng] = polygon[i];
+        let [pj_lat, pj_lng] = polygon[j];
+        // *** TYPO WAS HERE: pj_png corrected to pj_lng ***
+        let intersect = ((pi_lng > lng) !== (pj_lng > lng)) && (lat < (pj_lat - pi_lat) * (lng - pi_lng) / (pj_lng - pi_lng) + pi_lat);
+        if (intersect) isInside = !isInside;
+    }
+    return isInside;
+}
+
+function checkGeofence(bus) {
+    if (!bus || bus.sosActive || !currentMarker) return;
+    const isInside = isPointInPolygon([bus.lat, bus.lng], bus.geofence);
+    if (!isInside && !bus.isDeviated) {
+        bus.isDeviated = true;
+        addAdminAlert(bus, 'DEVIATION');
+        currentMarker.setIcon(deviatedIcon);
+    } else if (isInside && bus.isDeviated) {
+        bus.isDeviated = false;
+        addAdminAlert(bus, 'SAFE');
+        currentMarker.setIcon(selectedIcon);
+    }
+}
+
+function clearMap() {
+    if(currentMarker) map.removeLayer(currentMarker);
+    if(currentGeofenceLayer) map.removeLayer(currentGeofenceLayer);
+    if(currentPolylineLayer) map.removeLayer(currentPolylineLayer);
+    currentBus = null;
+    currentMarker = null;
+    currentGeofenceLayer = null;
+    currentPolylineLayer = null;
+    // Also reset the bus selector
+    busSelector.value = "";
+    // Clear SOS confirmation
+    sosConfirmationEl.textContent = "";
+    sosConfirmationEl.style.display = "none";
+}
+
+function showSelectedBus(bus){
+  clearMap();
+  currentBus = bus;
+
+  // Create and draw layers for the selected bus
+  let icon = selectedIcon;
+  if (bus.sosActive) icon = sosIcon;
+  else if (bus.isDeviated) icon = deviatedIcon;
+ 
+  currentMarker = L.marker([bus.lat,bus.lng], {icon:icon}).addTo(map).bindPopup(bus.name);
+  const latlngs = bus.routeStops.map(stop => [stop.lat, stop.lng]);
+  currentPolylineLayer = L.polyline(latlngs, {color:'blue', weight:3, dashArray:'5,10'}).addTo(map);
+  currentGeofenceLayer = L.polygon(bus.geofence, {color: '#ffc107', weight: 2, fillOpacity: 0.1}).addTo(map);
+ 
+  map.fitBounds(currentGeofenceLayer.getBounds());
+}
+
+// --- Wire up Tracking Demo Buttons ---
+document.getElementById('sosButton').onclick = () => {
+      if (!currentBus || !currentMarker) return;
+      if (currentBus.sosActive) return; // Prevent multiple triggers
+
+      currentBus.sosActive = true;
+      currentMarker.setIcon(sosIcon);
+      addAdminAlert(currentBus, 'SOS');
+
+      // *** ADDED: Simulate police notification ***
+      addAdminAlert(currentBus, 'INFO', 'Route and details sent to nearest police station.');
+      sosConfirmationEl.textContent = "SOS Activated! Authorities Notified.";
+      sosConfirmationEl.style.display = "block";
+      // Hide confirmation after a few seconds
+      setTimeout(() => {
+          sosConfirmationEl.style.display = "none";
+      }, 5000); // 5 seconds
+};
+ 
+document.getElementById('forceDeviationButton').onclick = () => {
+      if (!currentBus || !currentMarker) return;
+      // Simulate moving outside the geofence
+      currentBus.lat = currentBus.geofence[0][0] + 0.05;
+      currentBus.lng = currentBus.geofence[0][1] + 0.05;
+      currentMarker.setLatLng([currentBus.lat, currentBus.lng]);
+      map.setView([currentBus.lat, currentBus.lng], 13);
+      checkGeofence(currentBus);
+};
+
+document.getElementById('returnRouteButton').onclick = () => {
+      if (!currentBus || !currentMarker) return;
+      // Simulate returning to the route's start
+      currentBus.lat = currentBus.routeStops[0].lat;
+      currentBus.lng = currentBus.routeStops[0].lng;
+      currentMarker.setLatLng([currentBus.lat, currentBus.lng]);
+      map.setView([currentBus.lat, currentBus.lng], 13);
+      if (currentBus.sosActive) {
+          currentBus.sosActive = false;
+          // Optionally add a 'SAFE' alert for SOS cleared?
+          // addAdminAlert(currentBus, 'SAFE', 'SOS situation resolved.');
+          sosConfirmationEl.textContent = ""; // Clear SOS confirmation
+          sosConfirmationEl.style.display = "none";
+      }
+      checkGeofence(currentBus); // This will change icon back if deviated
+      // Explicitly set icon back if it was SOS but not deviated
+      if (!currentBus.isDeviated && !currentBus.sosActive) {
+          currentMarker.setIcon(selectedIcon);
+      }
+};
+
 
 // ------------------ Login / Logout ------------------
 function loginPilot(){
-    const username=document.getElementById('username').value.trim();
-    const password=document.getElementById('password').value.trim();
-    if(username==="pilot" && password==="1234"){
-        role="pilot";
-        document.getElementById('loginPage').style.display="none";
-        document.getElementById('dashboard').style.display="block";
-        document.getElementById('roleTitle').textContent="Pilot Dashboard";
-        document.getElementById('pilotControlsBus').style.display="block";
-        document.getElementById('pilotControlsSeats').style.display="block";
-        document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=false);
-    }else alert("Invalid credentials! pilot/1234");
+    const username=document.getElementById('username').value.trim();
+    const password=document.getElementById('password').value.trim();
+    const errorEl = document.getElementById('loginError'); // Get error element
+
+    if(username==="pilot" && password==="1234"){
+        role="pilot";
+        document.getElementById('loginPage').style.display="none";
+        document.getElementById('dashboard').style.display="block";
+        document.getElementById('roleTitle').textContent="Pilot Dashboard";
+        // Show pilot controls
+        document.getElementById('pilotControlsBus').style.display="block";
+        document.getElementById('pilotControlsSeats').style.display="block";
+        document.getElementById('adminPanel').style.display="block";
+        document.getElementById('trackingControls').style.display="block";
+        document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=false);
+        errorEl.style.display = "none"; // Hide error on success
+
+        // *** ADDED: Fix for map rendering ***
+        setTimeout(() => map.invalidateSize(), 0);
+    } else {
+        // Show error message instead of alert
+        errorEl.textContent = "Invalid credentials! Use pilot / 1234";
+        errorEl.style.display = "block";
+    }
 }
 
 function enterPassenger(){
-    role="passenger";
-    document.getElementById('loginPage').style.display="none";
-    document.getElementById('dashboard').style.display="block";
-    document.getElementById('roleTitle').textContent="Passenger View";
-    document.getElementById('pilotControlsSeats').style.display="none";
-    document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=true);
-    document.querySelector('#pilotControlsBus button').style.display="none";
+    role="passenger";
+    document.getElementById('loginPage').style.display="none";
+    document.getElementById('dashboard').style.display="block";
+    document.getElementById('roleTitle').textContent="Passenger View";
+    // Hide pilot controls
+    document.getElementById('pilotControlsSeats').style.display="none";
+    document.getElementById('adminPanel').style.display="none";
+    document.getElementById('trackingControls').style.display="none";
+    document.querySelectorAll('#pilotControlsBus input').forEach(el=>el.disabled=true);
+    document.querySelector('#pilotControlsBus button').style.display="none";
+    document.getElementById('loginError').style.display = "none";
+
+    // *** ADDED: Fix for map rendering ***
+    setTimeout(() => map.invalidateSize(), 0);
 }
 
 function logout(){
-    role="";
-    document.getElementById('dashboard').style.display="none";
-    document.getElementById('loginPage').style.display="block";
+    role="";
+    document.getElementById('dashboard').style.display="none";
+    document.getElementById('loginPage').style.display="block";
+    document.getElementById('username').value = ""; // Clear fields
+    document.getElementById('password').value = "";
+    clearMap(); // Clear the map on logout
 }
 
 // ------------------ Seats & Wheelchair ------------------
 function updateSeats(){
-    occupiedEl.textContent=occupiedSeats;
-    availableEl.textContent=TOTAL_SEATS-occupiedSeats;
-    let pct=(occupiedSeats/TOTAL_SEATS)*100;
-    seatProgEl.style.width=pct+'%';
-    if(pct<=50){crowdLevelEl.textContent='Low';crowdLevelEl.style.color='green';}
-    else if(pct<=80){crowdLevelEl.textContent='Medium';crowdLevelEl.style.color='orange';}
-    else{crowdLevelEl.textContent='High';crowdLevelEl.style.color='red';}
+    occupiedEl.textContent=occupiedSeats;
+    availableEl.textContent=TOTAL_SEATS-occupiedSeats;
+    let pct=(occupiedSeats/TOTAL_SEATS)*100;
+    seatProgEl.style.width=pct+'%';
+    if(pct<=50){crowdLevelEl.textContent='Low';crowdLevelEl.style.color='green';}
+    else if(pct<=80){crowdLevelEl.textContent='Medium';crowdLevelEl.style.color='orange';}
+    else{crowdLevelEl.textContent='High';crowdLevelEl.style.color='red';}
 }
 
 function updateWheelchair(){
-    wheelchairStatusEl.textContent=wheelchairAvailable?'Available':'Not Available';
+    wheelchairStatusEl.textContent=wheelchairAvailable?'Available':'Not Available';
 }
 
 // Controls
@@ -194,62 +431,83 @@ document.getElementById('releaseWC').addEventListener('click',()=>{wheelchairAva
 
 // ------------------ Bus Info ------------------
 function updateBusInfo(){
-    if(role!=="pilot") return;
-    let c=document.getElementById('setCurrentStop').value;
-    let n=document.getElementById('setNextStop').value;
-    let t=document.getElementById('setNextBus').value;
-    let s=parseFloat(document.getElementById('setSpeed').value);
-    let d=parseFloat(document.getElementById('setDistance').value);
-    if(c){currentStopName=c; currentStopEl.textContent=c;}
-    if(n){nextStopName=n; nextStopEl.textContent=n;}
-    if(t) nextBusEl.textContent=t;
-    if(!isNaN(s)) busSpeed=s;
-    if(!isNaN(d)) routeDistance=d;
-    lastUpdateTime=new Date();
+    if(role!=="pilot") return;
+    let c=document.getElementById('setCurrentStop').value;
+    let n=document.getElementById('setNextStop').value;
+    let t=document.getElementById('setNextBus').value;
+    let s=parseFloat(document.getElementById('setSpeed').value);
+    let d=parseFloat(document.getElementById('setDistance').value);
+    if(c){currentStopName=c; currentStopEl.textContent=c;}
+    if(n){nextStopName=n; nextStopEl.textContent=n;}
+    if(t) nextBusEl.textContent=t;
+    if(!isNaN(s)) busSpeed=s;
+    if(!isNaN(d)) routeDistance=d;
+    lastUpdateTime=new Date();
 }
 
 // ------------------ Network ------------------
 function toggleNetwork(){
-    isOnline=!isOnline;
-    networkStatusEl.textContent=isOnline?"Online":"Offline";
-    networkStatusEl.style.color=isOnline?"green":"red";
+    isOnline=!isOnline;
+    networkStatusEl.textContent=isOnline?"Online":"Offline";
+    networkStatusEl.style.color=isOnline?"green":"red";
+   
+    // When online, update the *real* bus position
+    if(isOnline && currentBus && currentMarker) {
+        currentMarker.setLatLng([currentBus.lat, currentBus.lng]);
+        map.panTo([currentBus.lat, currentBus.lng], {animate:true});
+    }
 }
 
 // ------------------ Estimate Location ------------------
 function estimateLocation(){
-    if(isOnline){estimatedLocEl.textContent="Live GPS Data Available"; estimatedLocEl.style.color="green";}
-    else{
-        if(lastUpdateTime && busSpeed>0 && routeDistance>0){
-            let now=new Date();
-            let hours=(now-lastUpdateTime)/3600000;
-            let travelled=busSpeed*hours;
-            estimatedLocEl.style.color="#9a3412";
-            if(travelled>=routeDistance) estimatedLocEl.textContent=`Reached ${nextStopName}`;
-            else{
-                let pct=(travelled/routeDistance*100).toFixed(1);
-                estimatedLocEl.textContent=`${pct}% between ${currentStopName} and ${nextStopName}`;
-            }
-        } else estimatedLocEl.textContent="--";
-    }
-}
+    if(isOnline){
+        estimatedLocEl.textContent="Live GPS Data Available";
+        estimatedLocEl.style.color="green";
+        // Live update logic for bus movement (replaces the old simulation)
+        if(currentBus && currentMarker && !currentBus.isDeviated && !currentBus.sosActive) {
+            // Simple simulation: move bus along its route
+            let startStop = currentBus.routeStops[0];
+            let endStop = currentBus.routeStops[1];
 
-// ------------------ Bus Movement Simulation ------------------
-let busLat=11.0168, busLon=76.9558;
-let dir=0.0003;
-setInterval(()=>{
-    if(isOnline){
-        busLat+=dir;
-        busLon+=dir;
-        if(busLat>11.035 || busLat<11.0) dir=-dir; // bounce
-        busMarker.setLatLng([busLat,busLon]);
-        map.panTo([busLat,busLon],{animate:true});
-    }
-},1000);
+            // Move 1% of the route per second (example movement)
+            let newLat = currentBus.lat + (endStop.lat - startStop.lat) * 0.01;
+            let newLng = currentBus.lng + (endStop.lng - startStop.lng) * 0.01;
+           
+            // Simple boundary check to reset
+            if (Math.abs(newLat - endStop.lat) < 0.001 || Math.abs(newLng - endStop.lng) < 0.001) { // Check both lat/lng proximity
+                currentBus.lat = startStop.lat;
+                currentBus.lng = startStop.lng;
+            } else {
+                currentBus.lat = newLat;
+                currentBus.lng = newLng;
+            }
+            currentMarker.setLatLng([currentBus.lat, currentBus.lng]);
+            // Only pan if the user hasn't manually moved the map recently
+            // This requires more complex logic to track user interaction, skipping for simplicity
+            // map.panTo([currentBus.lat, currentBus.lng], {animate: true});
+            checkGeofence(currentBus); // Check geofence on every move
+        }
+    }
+    else { // This is the OFFLINE block
+        if(lastUpdateTime && busSpeed>0 && routeDistance>0){
+            let now=new Date();
+            let hours=(now-lastUpdateTime)/3600000;
+            let travelled=busSpeed*hours; // 'travelled' is correctly defined here
+            estimatedLocEl.style.color="#9a3412";
+            if(travelled>=routeDistance) estimatedLocEl.textContent=`Reached ${nextStopName}`;
+            else{
+                let pct=(travelled/routeDistance*100).toFixed(1);
+                estimatedLocEl.textContent=`${pct}% between ${currentStopName} and ${nextStopName}`;
+            }
+        } else estimatedLocEl.textContent="--";
+    }
+}
 
 // ------------------ Init ------------------
 updateSeats();
 updateWheelchair();
-setInterval(estimateLocation,5000);
+setInterval(estimateLocation, 2000); // Check/update location more frequently
 </script>
 </body>
 </html>
+
