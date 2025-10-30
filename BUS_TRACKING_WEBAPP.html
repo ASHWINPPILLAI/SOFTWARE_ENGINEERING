@@ -33,22 +33,30 @@
     writeBatch,
     setLogLevel
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
 
   // --- Firebase Config and Initialization ---
   
-  // These global variables are provided by the environment.
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-smart-bus-app';
-  const firebaseConfig = typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) 
-    : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID" }; // Fallback config
-    
-  const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-  
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBvnvizMIsTb2Ydw7Wg-94eYEdXqJHpaJA",
+    authDomain: "smart-bus-tracker-1fd61.firebaseapp.com",
+    projectId: "smart-bus-tracker-1fd61",
+    storageBucket: "smart-bus-tracker-1fd61.firebasestorage.app",
+    messagingSenderId: "926506009709",
+    appId: "1:926506009709:web:256842499201de729c2b64",
+    measurementId: "G-NBTFVQPJK2"
+  };
+
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
   const auth = getAuth(app);
   const db = getFirestore(app);
   setLogLevel('debug');
+  
+  // Use a clean, static appId for paths
+  const appId = "smart-bus-tracker-demo";
 
   // Simple polyfill if crypto.randomUUID is not available
   if (typeof crypto === 'undefined' || !crypto.randomUUID) {
@@ -77,6 +85,8 @@
   let mapInitialized = false;
   let map;
   let busIcon, sosIcon, deviatedIcon;
+  let isOnline = true; // NEW: Network state
+  let firestoreUnsubscribe = null; // NEW: To store the listener
 
   // Live data from Firestore
   let busStates = {}; // e.g., { "1": { lat: ..., lng: ..., occupiedSeats: ... }, "2": ... }
@@ -89,10 +99,10 @@
   let currentPolylineLayer = null;
 
   // --- DOM Elements ---
-  // We use a helper to ensure DOM is loaded before assigning
   let loginErrorEl, occupiedEl, availableEl, seatProgEl, crowdLevelEl, wheelchairStatusEl,
       adminAlertsDiv, busSelector, sosMessageEl, searchRouteButton, startStopInput,
-      endStopInput, searchErrorEl, seatsPanel, wheelchairPanel;
+      endStopInput, searchErrorEl, seatsPanel, wheelchairPanel, networkStatusEl,
+      toggleNetworkButton, mapOfflineMessage;
 
   function assignDOMElements() {
     loginErrorEl = document.getElementById('loginError');
@@ -110,6 +120,9 @@
     searchErrorEl = document.getElementById('searchError');
     seatsPanel = document.getElementById('seatsPanel');
     wheelchairPanel = document.getElementById('wheelchairPanel');
+    networkStatusEl = document.getElementById('networkStatus');
+    toggleNetworkButton = document.getElementById('toggleNetworkButton');
+    mapOfflineMessage = document.getElementById('mapOfflineMessage');
   }
 
   // --- Firestore Helper ---
@@ -179,7 +192,6 @@
     if(currentMarker) map.removeLayer(currentMarker);
     if(currentGeofenceLayer) map.removeLayer(currentGeofenceLayer);
     if(currentPolylineLayer) map.removeLayer(currentPolylineLayer);
-    // currentBusStatic = null; // Don't null this, snapshot listener needs it
     currentMarker = null;
     currentGeofenceLayer = null;
     currentPolylineLayer = null;
@@ -190,10 +202,8 @@
     clearMap(); 
     currentBusStatic = busStaticData;
     
-    // Get the live data for this bus
     let liveState = busStates[busStaticData.id.toString()];
     
-    // *** FIX: Use static data as a fallback if live data isn't ready ***
     if (!liveState) {
       console.warn("No live state for bus", busStaticData.id, ". Using static data for first draw.");
       liveState = {
@@ -216,15 +226,14 @@
     map.fitBounds(currentGeofenceLayer.getBounds());
   }
   
-  // --- *** FIXED UI Update Function *** ---
+  // --- UI Update Function ---
   
   function updateDashboardUI(busId) {
-    // Ensure elements are ready
     if (!occupiedEl) assignDOMElements(); 
     
     const liveState = busId ? busStates[busId.toString()] : null;
     
-    if (liveState) {
+    if (liveState && isOnline) { // Only show live data if online
       // --- DATA IS LIVE ---
       document.getElementById('seats-placeholder').style.display = 'none';
       document.getElementById('wheelchair-placeholder').style.display = 'none';
@@ -252,7 +261,7 @@
       wheelchairPanel.classList.remove('opacity-50');
 
     } else {
-      // --- NO BUS SELECTED OR DATA IS NOT LOADED YET ---
+      // --- NO BUS SELECTED OR OFFLINE ---
       
       // Show placeholders
       document.getElementById('seats-placeholder').style.display = 'block';
@@ -319,7 +328,8 @@
     if (simulationInterval) clearInterval(simulationInterval);
     
     simulationInterval = setInterval(async () => {
-      if (!currentBusStatic || role !== 'pilot') return;
+      // Pilot simulation stops if they go offline
+      if (!currentBusStatic || role !== 'pilot' || !isOnline) return;
 
       const currentBusState = busStates[currentBusStatic.id.toString()];
       if (!currentBusState || currentBusState.isDeviated || currentBusState.sosActive) {
@@ -355,10 +365,12 @@
     }, 2000);
   }
 
-  function startAppListeners() {
+  function subscribeToData() {
+    if (firestoreUnsubscribe) return; // Already listening
+
     // Listen for changes to ANY bus
     const q = query(collection(db, busStatesCollectionPath));
-    onSnapshot(q, (querySnapshot) => {
+    firestoreUnsubscribe = onSnapshot(q, (querySnapshot) => {
       querySnapshot.forEach((doc) => {
         busStates[doc.id] = doc.data();
       });
@@ -379,7 +391,6 @@
             else if (liveState.isDeviated) icon = deviatedIcon;
             currentMarker.setIcon(icon);
             
-            // Check geofence status
             checkGeofence(currentBusStatic, liveState);
           }
         }
@@ -389,12 +400,20 @@
     });
   }
 
+  function unsubscribeFromData() {
+    if (firestoreUnsubscribe) {
+      firestoreUnsubscribe(); // Stop the listener
+      firestoreUnsubscribe = null;
+      console.log("Stopped Firestore listeners.");
+    }
+  }
+
 
   // --- Event Handlers ---
   
   // Login / Logout
   window.loginPilot = () => {
-    if (!loginErrorEl) assignDOMElements(); // Ensure elements are ready
+    if (!loginErrorEl) assignDOMElements();
     const username=document.getElementById('username').value.trim();
     const password=document.getElementById('password').value.trim();
     if(username==="pilot" && password==="1234"){
@@ -421,11 +440,16 @@
     
     clearMap();
     currentBusStatic = null;
-    busSelector.value = ""; // Reset dropdown
-    updateDashboardUI(null); // *** FIX: Reset panels to placeholder ***
+    busSelector.value = ""; 
+    updateDashboardUI(null); 
 
     if (simulationInterval) clearInterval(simulationInterval);
-    // Note: We don't sign out the anonymous user, they just go back to login
+    
+    // Go back online on logout
+    if (!isOnline) {
+      window.toggleNetwork();
+    }
+    // We don't unsubscribe, as the anonymous user is still active
   }
   
   function setupDashboard() {
@@ -497,16 +521,46 @@
       } else {
         clearMap();
         currentBusStatic = null;
-        updateDashboardUI(null); // *** FIX: Reset panels to placeholder ***
+        updateDashboardUI(null); 
         if (simulationInterval) clearInterval(simulationInterval);
       }
     };
   }
 
+  // --- NEW: Network Toggle Handler ---
+  window.toggleNetwork = () => {
+    isOnline = !isOnline; // Flip the state
+    if (isOnline) {
+      networkStatusEl.textContent = "Online";
+      networkStatusEl.style.color = "green";
+      toggleNetworkButton.textContent = "Go Offline";
+      toggleNetworkButton.className = "btn-blue";
+      mapOfflineMessage.style.display = 'none';
+      if (currentMarker) currentMarker.setOpacity(1);
+
+      // Re-subscribe to live data
+      subscribeToData();
+      // Re-start simulation if pilot and bus is selected
+      if(role === 'pilot' && currentBusStatic) startBusSimulation();
+
+    } else {
+      networkStatusEl.textContent = "Offline";
+      networkStatusEl.style.color = "red";
+      toggleNetworkButton.textContent = "Go Online";
+      toggleNetworkButton.className = "btn-green";
+      mapOfflineMessage.style.display = 'block';
+      if (currentMarker) currentMarker.setOpacity(0.5);
+
+      // Stop listening to live data
+      unsubscribeFromData();
+      // Simulation interval will stop on its own next time it runs
+    }
+  }
+
   // Pilot Controls
   function setupPilotControls() {
     document.getElementById('plusSeat').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const currentSeats = busStates[currentBusStatic.id.toString()].occupiedSeats;
       const newSeats = Math.min(currentSeats + 1, 30);
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
@@ -514,7 +568,7 @@
     };
     
     document.getElementById('minusSeat').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const currentSeats = busStates[currentBusStatic.id.toString()].occupiedSeats;
       const newSeats = Math.max(currentSeats - 1, 0);
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
@@ -522,19 +576,19 @@
     };
 
     document.getElementById('reserveWC').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
       await updateDoc(busRef, { wheelchairAvailable: false });
     };
     
     document.getElementById('releaseWC').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
       await updateDoc(busRef, { wheelchairAvailable: true });
     };
 
     document.getElementById('sosButton').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
       await updateDoc(busRef, { sosActive: true });
       addAdminAlert(currentBusStatic, 'SOS');
@@ -543,18 +597,17 @@
     };
     
     document.getElementById('forceDeviationButton').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const newState = {
         lat: currentBusStatic.geofence[0][0] + 0.05,
         lng: currentBusStatic.geofence[0][1] + 0.05,
       };
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
       await updateDoc(busRef, newState);
-      // Listener will pick up the change and check geofence
     };
 
     document.getElementById('returnRouteButton').onclick = async () => {
-      if (role !== "pilot" || !currentBusStatic) return;
+      if (role !== "pilot" || !currentBusStatic || !isOnline) return;
       const newState = {
         lat: currentBusStatic.routeStops[0].lat,
         lng: currentBusStatic.routeStops[0].lng,
@@ -563,12 +616,37 @@
       };
       const busRef = doc(db, busStatesCollectionPath, currentBusStatic.id.toString());
       await updateDoc(busRef, newState);
-      // Listener will pick up the change
     };
   }
   
   // --- App Initialization ---
   
+  // --- Firebase Auth (MOVED TO TOP LEVEL) ---
+  const signIn = async () => {
+    try {
+      await signInAnonymously(auth);
+      console.log("Signed in anonymously.");
+    } catch (error) {
+      console.error("Firebase sign-in error:", error);
+    }
+  };
+  
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      userId = user.uid || crypto.randomUUID();
+      console.log("User is signed in with UID:", userId);
+      // Now that we are signed in, start listening to data
+      subscribeToData();
+      // NOTE: initializeDatabase() is now called on pilot login
+    } else {
+      userId = null;
+      console.log("User is signed out.");
+    }
+  });
+  
+  // Start the sign-in process immediately
+  signIn();
+
   // Wait for DOM to be loaded before setting up handlers
   document.addEventListener("DOMContentLoaded", () => {
     // Assign all elements once
@@ -586,38 +664,7 @@
     setupRouteSearch();
     setupBusSelector();
     setupPilotControls();
-
-    // --- Firebase Auth ---
-    const signIn = async (token) => {
-      try {
-        if (token) {
-          await signInWithCustomToken(auth, token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Firebase sign-in error:", error);
-        if (token) {
-          try { await signInAnonymously(auth); } catch (anonError) { console.error("Anonymous sign-in fallback failed:", anonError); }
-        }
-      }
-    };
-    
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        userId = user.uid || crypto.randomUUID();
-        console.log("User is signed in with UID:", userId);
-        // Now that we are signed in, start listening to data
-        startAppListeners();
-        // NOTE: initializeDatabase() is now called on pilot login
-      } else {
-        userId = null;
-        console.log("User is signed out.");
-      }
-    });
-    
-    // Start the sign-in process
-    signIn(initialAuthToken);
+    toggleNetworkButton.onclick = window.toggleNetwork; // Attach network toggle
   });
 
 </script>
@@ -639,13 +686,36 @@ input, select{padding:10px;width:100%;margin:6px 0;border:1px solid #ccc;border-
 #crowdLevel{font-weight:bold;}
 .offline{color:#9a3412;font-weight:bold;}
 footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
-#busMap{width:100%; height:400px; border-radius:12px; margin-top:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
 #loginError { color: #b91c1c; font-weight: bold; margin-top: 10px; text-align: center; }
 #searchError { color: #b91c1c; font-weight: 500; margin-top: 5px; }
 .opacity-50 { opacity: 0.5; cursor: not-allowed; }
 .placeholder { color: #777; font-style: italic; }
 /* Hide placeholders by default, show them via JS */
 #seats-placeholder, #wheelchair-placeholder { display: none; }
+
+/* --- Map & Network Styles --- */
+#mapContainer { position: relative; }
+#busMap{width:100%; height:400px; border-radius:12px; margin-top:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+#mapOfflineMessage {
+  display: none;
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  margin: auto;
+  z-index: 1001; /* Above map tiles */
+  background: rgba(255, 0, 0, 0.8);
+  color: white;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: center;
+  font-weight: bold;
+  width: 80%;
+}
+.leaflet-container.offline {
+  opacity: 0.6;
+  filter: grayscale(80%);
+}
 
 /* --- STYLES for DEMO & TRACKING --- */
 #adminAlerts { background: #e9ecef; padding: 10px; border-radius: 5px; margin-top: 10px; min-height: 150px; }
@@ -728,6 +798,13 @@ footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
     </div>
   </div>
 
+  <!-- Network Mode -->
+  <div class="panel">
+    <h3>Network Mode</h3>
+    <p>Status: <span id="networkStatus" style="font-weight:bold;color:green;">Online</span></p>
+    <button class="btn-blue" id="toggleNetworkButton">Go Offline</button>
+  </div>
+
   <!-- Live Map -->
   <div class="panel">
     <h3>Live Tracking</h3>
@@ -735,7 +812,10 @@ footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
     <select id="busSelector">
       <option value="">-- Select Bus --</option>
     </select>
-    <div id="busMap"></div>
+    <div id="mapContainer">
+      <div id="busMap"></div>
+      <div id="mapOfflineMessage">YOU ARE OFFLINE - MAP DATA IS NOT LIVE</div>
+    </div>
   </div>
   
   <!-- Tracking Controls (Pilot Only) -->
@@ -747,8 +827,9 @@ footer{text-align:center;font-size:13px;color:#555;margin:20px 0;}
     <button id="returnRouteButton">✅ Return to Route</button>
   </div>
 
-Examples <!-- Admin Alerts (Pilot Only) -->
-  <div class="panel" id="adminPanel" style="display:none;">
+  <!-- Admin Alerts (Pilot Only) -->
+  <div class="panel" id="adminPanel" style="display:none;">
+In addition to the previous changes, I've made some more edits to the immersive.
     <h3>Admin Alerts</h3>
     <div id="adminAlerts"><p><i>Alerts will appear here...</i></p></div>
   </div>
